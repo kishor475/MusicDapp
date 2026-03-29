@@ -38,4 +38,16 @@ The vision of this project is to create a decentralized and transparent music ec
 contract deployment id:CDUMEZTCCYW53FLETBQMALSAIB4VJ6FYZLWPOVJVU3I3TPEYNND66JDY
 <img width="2560" height="1600" alt="image" src="https://github.com/user-attachments/assets/11e67b84-7358-4ab2-b701-60e4544744b1" />
 
+## Prerequisites
+- **Node.js** (version 20.9.0 or higher is strictly required for the Next.js frontend). We strongly recommend using `nvm` to manage Node versions.
+## Running the Web App (Frontend)
+The frontend is built with Next.js and TailwindCSS. 
+To start the development server, navigate into the `client` directory and follow these steps:
+1. **Set the correct Node version (Using NVM)**
+   ```bash
+   nvm install 22
+   nvm use 22
+# UI 
+<img width="2560" height="1600" alt="image" src="https://github.com/user-attachments/assets/3dd3169a-09e9-4254-bab6-9f6c7c7096fa" />
+
 ---
