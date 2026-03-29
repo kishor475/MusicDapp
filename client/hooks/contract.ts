@@ -26,7 +26,7 @@ import {
 
 /** Your deployed Soroban contract ID */
 export const CONTRACT_ADDRESS =
-  "CDJVMAX34YRCQ5JFC6SIOQOVSUY6XWEFYJOLF3SBCKU7CMI3IAP6HPWN";
+  "CDUMEZTCCYW53FLETBQMALSAIB4VJ6FYZLWPOVJVU3I3TPEYNND66JDY";
 
 /** Network passphrase (testnet by default) */
 export const NETWORK_PASSPHRASE = Networks.TESTNET;
@@ -199,6 +199,10 @@ export function toScValU32(value: number): xdr.ScVal {
   return nativeToScVal(value, { type: "u32" });
 }
 
+export function toScValU64(value: bigint): xdr.ScVal {
+  return nativeToScVal(value, { type: "u64" });
+}
+
 export function toScValI128(value: bigint): xdr.ScVal {
   return nativeToScVal(value, { type: "i128" });
 }
@@ -212,57 +216,67 @@ export function toScValBool(value: boolean): xdr.ScVal {
 }
 
 // ============================================================
-// Supply Chain Tracker — Contract Methods
+// Music DApp — Contract Methods
 // ============================================================
 
 /**
- * Add a product to the supply chain.
- * Calls: add_product(product_id: String, origin: String)
+ * Upload a song to the blockchain.
+ * Calls: upload_song(title: String, artist: String, price: u64, owner: String) -> u64
  */
-export async function addProduct(
+export async function uploadSong(
   caller: string,
-  productId: string,
-  origin: string
+  title: string,
+  artist: string,
+  price: bigint,
+  owner: string
 ) {
   return callContract(
-    "add_product",
-    [toScValString(productId), toScValString(origin)],
+    "upload_song",
+    [
+      toScValString(title),
+      toScValString(artist),
+      toScValU64(price),
+      toScValString(owner),
+    ],
     caller,
     true
   );
 }
 
 /**
- * Update a product's status.
- * Calls: update_status(product_id: String, new_status: String)
+ * Purchase a song (simulates ownership transfer).
+ * Calls: purchase_song(id: u64, new_owner: String)
  */
-export async function updateProductStatus(
+export async function purchaseSong(
   caller: string,
-  productId: string,
-  newStatus: string
+  id: bigint,
+  newOwner: string
 ) {
   return callContract(
-    "update_status",
-    [toScValString(productId), toScValString(newStatus)],
+    "purchase_song",
+    [toScValU64(id), toScValString(newOwner)],
     caller,
     true
   );
 }
 
 /**
- * Get product details (read-only).
- * Calls: get_product(product_id: String) -> Map<Symbol, String>
- * Returns: { origin: string, status: string } or null
+ * Get song details (read-only).
+ * Calls: get_song(id: u64) -> Song struct
  */
-export async function getProduct(
-  productId: string,
+export async function getSong(
+  id: bigint,
   caller?: string
 ) {
-  return readContract(
-    "get_product",
-    [toScValString(productId)],
-    caller
-  );
+  return readContract("get_song", [toScValU64(id)], caller);
+}
+
+/**
+ * Get total uploaded songs (read-only).
+ * Calls: total_songs() -> u64
+ */
+export async function getTotalSongs(caller?: string) {
+  return readContract("total_songs", [], caller);
 }
 
 export { nativeToScVal, scValToNative, Address, xdr };

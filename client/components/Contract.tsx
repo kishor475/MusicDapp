@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
-  addProduct,
-  updateProductStatus,
-  getProduct,
+  uploadSong,
+  purchaseSong,
+  getSong,
+  getTotalSongs,
   CONTRACT_ADDRESS,
 } from "@/hooks/contract";
 import { AnimatedCard } from "@/components/ui/animated-card";
@@ -23,24 +24,12 @@ function SpinnerIcon() {
   );
 }
 
-function PackageIcon() {
+function MusicIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M16.5 9.4 7.55 4.24" />
-      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-      <polyline points="3.29 7 12 12 20.71 7" />
-      <line x1="12" y1="22" x2="12" y2="12" />
-    </svg>
-  );
-}
-
-function RefreshIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-      <path d="M21 3v5h-5" />
-      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-      <path d="M8 16H3v5" />
+      <path d="M9 18V5l12-2v13" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="16" r="3" />
     </svg>
   );
 }
@@ -68,6 +57,16 @@ function AlertIcon() {
       <circle cx="12" cy="12" r="10" />
       <line x1="12" y1="8" x2="12" y2="12" />
       <line x1="12" y1="16" x2="12.01" y2="16" />
+    </svg>
+  );
+}
+
+function WalletIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
+      <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
+      <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
     </svg>
   );
 }
@@ -118,17 +117,9 @@ function MethodSignature({
   );
 }
 
-// ── Status Config ────────────────────────────────────────────
-
-const STATUS_CONFIG: Record<string, { color: string; bg: string; border: string; dot: string; variant: "success" | "warning" | "info" }> = {
-  Created: { color: "text-[#fbbf24]", bg: "bg-[#fbbf24]/10", border: "border-[#fbbf24]/20", dot: "bg-[#fbbf24]", variant: "warning" },
-  Shipped: { color: "text-[#4fc3f7]", bg: "bg-[#4fc3f7]/10", border: "border-[#4fc3f7]/20", dot: "bg-[#4fc3f7]", variant: "info" },
-  Delivered: { color: "text-[#34d399]", bg: "bg-[#34d399]/10", border: "border-[#34d399]/20", dot: "bg-[#34d399]", variant: "success" },
-};
-
 // ── Main Component ───────────────────────────────────────────
 
-type Tab = "track" | "add" | "update";
+type Tab = "explore" | "upload";
 
 interface ContractUIProps {
   walletAddress: string | null;
@@ -137,91 +128,134 @@ interface ContractUIProps {
 }
 
 export default function ContractUI({ walletAddress, onConnect, isConnecting }: ContractUIProps) {
-  const [activeTab, setActiveTab] = useState<Tab>("track");
+  const [activeTab, setActiveTab] = useState<Tab>("explore");
   const [error, setError] = useState<string | null>(null);
   const [txStatus, setTxStatus] = useState<string | null>(null);
 
-  const [addId, setAddId] = useState("");
-  const [addOrigin, setAddOrigin] = useState("");
-  const [isAdding, setIsAdding] = useState(false);
+  const [totalSongs, setTotalSongs] = useState<string>("?");
 
-  const [updateId, setUpdateId] = useState("");
-  const [updateStatusVal, setUpdateStatusVal] = useState("");
-  const [isUpdating, setIsUpdating] = useState(false);
+  // Upload state
+  const [title, setTitle] = useState("");
+  const [artist, setArtist] = useState("");
+  const [price, setPrice] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
 
+  // Explore state
   const [trackId, setTrackId] = useState("");
-  const [isTracking, setIsTracking] = useState(false);
-  const [productData, setProductData] = useState<Record<string, string> | null>(null);
+  const [isQuerying, setIsQuerying] = useState(false);
+  const [songData, setSongData] = useState<Record<string, any> | null>(null);
+  const [isPurchasing, setIsPurchasing] = useState(false);
 
   const truncate = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
-  const handleAddProduct = useCallback(async () => {
-    if (!walletAddress) return setError("Connect wallet first");
-    if (!addId.trim() || !addOrigin.trim()) return setError("Fill in all fields");
-    setError(null);
-    setIsAdding(true);
-    setTxStatus("Awaiting signature...");
-    try {
-      await addProduct(walletAddress, addId.trim(), addOrigin.trim());
-      setTxStatus("Product registered on-chain!");
-      setAddId("");
-      setAddOrigin("");
-      setTimeout(() => setTxStatus(null), 5000);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Transaction failed");
-      setTxStatus(null);
-    } finally {
-      setIsAdding(false);
-    }
-  }, [walletAddress, addId, addOrigin]);
-
-  const handleUpdateStatus = useCallback(async () => {
-    if (!walletAddress) return setError("Connect wallet first");
-    if (!updateId.trim() || !updateStatusVal.trim()) return setError("Fill in all fields");
-    setError(null);
-    setIsUpdating(true);
-    setTxStatus("Awaiting signature...");
-    try {
-      await updateProductStatus(walletAddress, updateId.trim(), updateStatusVal.trim());
-      setTxStatus("Status updated on-chain!");
-      setUpdateId("");
-      setUpdateStatusVal("");
-      setTimeout(() => setTxStatus(null), 5000);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Transaction failed");
-      setTxStatus(null);
-    } finally {
-      setIsUpdating(false);
-    }
-  }, [walletAddress, updateId, updateStatusVal]);
-
-  const handleTrackProduct = useCallback(async () => {
-    if (!trackId.trim()) return setError("Enter a product ID");
-    setError(null);
-    setIsTracking(true);
-    setProductData(null);
-    try {
-      const result = await getProduct(trackId.trim(), walletAddress || undefined);
-      if (result && typeof result === "object") {
-        const mapped: Record<string, string> = {};
-        for (const [k, v] of Object.entries(result)) {
-          mapped[String(k)] = String(v);
+  // Fetch total songs occasionally
+  useEffect(() => {
+    async function init() {
+      try {
+        const total = await getTotalSongs();
+        if (total !== null && total !== undefined) {
+          setTotalSongs(total.toString());
         }
-        setProductData(mapped);
+      } catch (e) {
+        // ignore
+      }
+    }
+    init();
+  }, [txStatus]); 
+
+  const handleUploadSong = useCallback(async () => {
+    if (!walletAddress) return setError("Connect wallet first");
+    if (!title.trim() || !artist.trim() || !price.trim()) return setError("Fill in all fields");
+    if (isNaN(Number(price))) return setError("Price must be a number");
+    
+    setError(null);
+    setIsUploading(true);
+    setTxStatus("Awaiting signature...");
+    
+    try {
+      await uploadSong(
+        walletAddress,
+        title.trim(),
+        artist.trim(),
+        BigInt(price.trim()),
+        walletAddress
+      );
+      setTxStatus("Song uploaded on-chain!");
+      setTitle("");
+      setArtist("");
+      setPrice("");
+      setTimeout(() => setTxStatus(null), 5000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Transaction failed");
+      setTxStatus(null);
+    } finally {
+      setIsUploading(false);
+    }
+  }, [walletAddress, title, artist, price]);
+
+  const handleGetSong = useCallback(async () => {
+    if (!trackId.trim()) return setError("Enter a Song ID");
+    if (isNaN(Number(trackId))) return setError("Song ID must be a number");
+    
+    setError(null);
+    setIsQuerying(true);
+    setSongData(null);
+    
+    try {
+      const result = await getSong(BigInt(trackId.trim()), walletAddress || undefined);
+      if (result) {
+        // Handle array mapping or object mapping
+        if (Array.isArray(result) && result.length >= 5) {
+          setSongData({
+            id: String(result[0]),
+            title: String(result[1]),
+            artist: String(result[2]),
+            price: String(result[3]),
+            owner: String(result[4])
+          });
+        } else if (typeof result === "object") {
+          const mapped: Record<string, string> = {};
+          for (const [k, v] of Object.entries(result)) {
+            mapped[String(k)] = String(v);
+          }
+          setSongData(mapped);
+        } else {
+           setError("Invalid song format received.");
+        }
       } else {
-        setError("Product not found");
+        setError("Song not found");
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Query failed");
     } finally {
-      setIsTracking(false);
+      setIsQuerying(false);
     }
   }, [trackId, walletAddress]);
 
+  const handlePurchase = useCallback(async () => {
+    if (!walletAddress) return setError("Connect wallet to purchase");
+    if (!songData?.id) return setError("No song selected to purchase");
+    
+    setError(null);
+    setIsPurchasing(true);
+    setTxStatus("Awaiting signature...");
+    
+    try {
+      await purchaseSong(walletAddress, BigInt(songData.id), walletAddress);
+      setTxStatus("Purchase successful! You now own this song.");
+      setTimeout(() => setTxStatus(null), 5000);
+      handleGetSong(); // refresh
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Transaction failed");
+      setTxStatus(null);
+    } finally {
+      setIsPurchasing(false);
+    }
+  }, [walletAddress, songData, handleGetSong]);
+
   const tabs: { key: Tab; label: string; icon: React.ReactNode; color: string }[] = [
-    { key: "track", label: "Track", icon: <SearchIcon />, color: "#4fc3f7" },
-    { key: "add", label: "Register", icon: <PackageIcon />, color: "#7c6cf0" },
-    { key: "update", label: "Update", icon: <RefreshIcon />, color: "#fbbf24" },
+    { key: "explore", label: "Explore", icon: <SearchIcon />, color: "#4fc3f7" },
+    { key: "upload", label: "Upload Track", icon: <MusicIcon />, color: "#7c6cf0" },
   ];
 
   return (
@@ -241,7 +275,7 @@ export default function ContractUI({ walletAddress, onConnect, isConnecting }: C
       {txStatus && (
         <div className="mb-4 flex items-center gap-3 rounded-xl border border-[#34d399]/15 bg-[#34d399]/[0.05] px-4 py-3 backdrop-blur-sm shadow-[0_0_30px_rgba(52,211,153,0.05)] animate-slide-down">
           <span className="text-[#34d399]">
-            {txStatus.includes("on-chain") || txStatus.includes("updated") ? <CheckIcon /> : <SpinnerIcon />}
+            {txStatus.includes("on-chain") || txStatus.includes("successful") ? <CheckIcon /> : <SpinnerIcon />}
           </span>
           <span className="text-sm text-[#34d399]/90">{txStatus}</span>
         </div>
@@ -254,20 +288,17 @@ export default function ContractUI({ walletAddress, onConnect, isConnecting }: C
           <div className="flex items-center justify-between border-b border-white/[0.06] px-6 py-4">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#7c6cf0]/20 to-[#4fc3f7]/20 border border-white/[0.06]">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#7c6cf0]">
-                  <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2" />
-                  <path d="M15 18H9" />
-                  <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14" />
-                  <circle cx="17" cy="18" r="2" />
-                  <circle cx="7" cy="18" r="2" />
-                </svg>
+                <MusicIcon />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-white/90">Supply Chain Tracker</h3>
+                <h3 className="text-sm font-semibold text-white/90">Music Space</h3>
                 <p className="text-[10px] text-white/25 font-mono mt-0.5">{truncate(CONTRACT_ADDRESS)}</p>
               </div>
             </div>
-            <Badge variant="info" className="text-[10px]">Soroban</Badge>
+            <div className="flex items-center gap-2">
+               <Badge variant="info" className="text-[10px] bg-white/[0.05]">{totalSongs} Songs</Badge>
+               <Badge variant="info" className="text-[10px]">Soroban</Badge>
+            </div>
           </div>
 
           {/* Tabs */}
@@ -275,7 +306,7 @@ export default function ContractUI({ walletAddress, onConnect, isConnecting }: C
             {tabs.map((t) => (
               <button
                 key={t.key}
-                onClick={() => { setActiveTab(t.key); setError(null); setProductData(null); }}
+                onClick={() => { setActiveTab(t.key); setError(null); setSongData(null); }}
                 className={cn(
                   "relative flex items-center gap-2 px-5 py-3.5 text-sm font-medium transition-all",
                   activeTab === t.key ? "text-white/90" : "text-white/35 hover:text-white/55"
@@ -295,58 +326,69 @@ export default function ContractUI({ walletAddress, onConnect, isConnecting }: C
 
           {/* Tab Content */}
           <div className="p-6">
-            {/* Track */}
-            {activeTab === "track" && (
+            
+            {/* Explore Tab */}
+            {activeTab === "explore" && (
               <div className="space-y-5">
-                <MethodSignature name="get_product" params="(product_id: String)" returns="-> Map<Symbol, String>" color="#4fc3f7" />
-                <Input label="Product ID" value={trackId} onChange={(e) => setTrackId(e.target.value)} placeholder="e.g. PROD-001" />
-                <ShimmerButton onClick={handleTrackProduct} disabled={isTracking} shimmerColor="#4fc3f7" className="w-full">
-                  {isTracking ? <><SpinnerIcon /> Querying...</> : <><SearchIcon /> Track Product</>}
+                <MethodSignature name="get_song" params="(id: u64)" returns="-> Song" color="#4fc3f7" />
+                <div className="flex gap-2 items-end">
+                    <div className="flex-1">
+                        <Input label="Song ID" value={trackId} onChange={(e) => setTrackId(e.target.value)} placeholder="e.g. 1" />
+                    </div>
+                </div>
+                <ShimmerButton onClick={handleGetSong} disabled={isQuerying} shimmerColor="#4fc3f7" className="w-full">
+                  {isQuerying ? <><SpinnerIcon /> Searching...</> : <><SearchIcon /> Search Directory</>}
                 </ShimmerButton>
 
-                {productData && (
+                {songData && (
                   <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden animate-fade-in-up">
                     <div className="border-b border-white/[0.06] px-4 py-3 flex items-center justify-between">
-                      <span className="text-[10px] font-medium uppercase tracking-wider text-white/25">Product Details</span>
-                      {(() => {
-                        const status = productData.status || "Unknown";
-                        const cfg = STATUS_CONFIG[status];
-                        return cfg ? (
-                          <Badge variant={cfg.variant}>
-                            <span className={cn("h-1.5 w-1.5 rounded-full", cfg.dot)} />
-                            {status}
-                          </Badge>
-                        ) : (
-                          <Badge>{status}</Badge>
-                        );
-                      })()}
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-white/25">Song Details</span>
+                      <Badge variant={songData.id !== "0" ? "success" : "warning"}>
+                         {songData.id !== "0" ? "Found" : "Missing / Not Found"}
+                      </Badge>
                     </div>
                     <div className="p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-white/35">Product ID</span>
-                        <span className="font-mono text-sm text-white/80">{trackId}</span>
-                      </div>
-                      {Object.entries(productData).map(([key, val]) => (
-                        <div key={key} className="flex items-center justify-between">
-                          <span className="text-xs text-white/35 capitalize">{key}</span>
-                          <span className="font-mono text-sm text-white/80">{val}</span>
+                      {Object.entries(songData).map(([key, val]) => (
+                        <div key={key} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 overflow-hidden">
+                          <span className="text-xs text-white/35 capitalize whitespace-nowrap">{key}</span>
+                          <span className="font-mono text-sm text-white/80 truncate" title={String(val)}>{String(val)}</span>
                         </div>
                       ))}
                     </div>
+                    
+                    {/* Purchase Action Footer */}
+                    {songData.id !== "0" && (
+                        <div className="border-t border-white/[0.06] p-4 bg-black/20">
+                           {walletAddress ? (
+                               <ShimmerButton onClick={handlePurchase} disabled={isPurchasing} shimmerColor="#34d399" className="w-full h-10 py-0 text-xs">
+                                 {isPurchasing ? <><SpinnerIcon /> Purchasing...</> : <><WalletIcon /> Purchase / Transfer Ownership (Price: {songData.price})</>}
+                               </ShimmerButton>
+                           ) : (
+                               <button onClick={onConnect} disabled={isConnecting} className="w-full rounded-xl border border-dashed border-white/20 bg-white/[0.03] py-2 text-xs text-white/60 hover:border-white/30 hover:text-white/80 transition-all">
+                                 Connect wallet to purchase
+                               </button>
+                           )}
+                        </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
 
-            {/* Add */}
-            {activeTab === "add" && (
+            {/* Upload Tab */}
+            {activeTab === "upload" && (
               <div className="space-y-5">
-                <MethodSignature name="add_product" params="(product_id: String, origin: String)" color="#7c6cf0" />
-                <Input label="Product ID" value={addId} onChange={(e) => setAddId(e.target.value)} placeholder="e.g. PROD-001" />
-                <Input label="Origin" value={addOrigin} onChange={(e) => setAddOrigin(e.target.value)} placeholder="e.g. Factory A, Shanghai" />
+                <MethodSignature name="upload_song" params="(title: String, artist: String, price: u64, owner: String)" color="#7c6cf0" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Input label="Song Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Bohemian Rhapsody" />
+                    <Input label="Artist" value={artist} onChange={(e) => setArtist(e.target.value)} placeholder="e.g. Queen" />
+                </div>
+                <Input label="Price (unit testnet amount)" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g. 100" />
+                
                 {walletAddress ? (
-                  <ShimmerButton onClick={handleAddProduct} disabled={isAdding} shimmerColor="#7c6cf0" className="w-full">
-                    {isAdding ? <><SpinnerIcon /> Registering...</> : <><PackageIcon /> Register Product</>}
+                  <ShimmerButton onClick={handleUploadSong} disabled={isUploading} shimmerColor="#7c6cf0" className="w-full">
+                    {isUploading ? <><SpinnerIcon /> Uploading...</> : <><MusicIcon /> Upload to blockchain</>}
                   </ShimmerButton>
                 ) : (
                   <button
@@ -354,62 +396,7 @@ export default function ContractUI({ walletAddress, onConnect, isConnecting }: C
                     disabled={isConnecting}
                     className="w-full rounded-xl border border-dashed border-[#7c6cf0]/20 bg-[#7c6cf0]/[0.03] py-4 text-sm text-[#7c6cf0]/60 hover:border-[#7c6cf0]/30 hover:text-[#7c6cf0]/80 active:scale-[0.99] transition-all disabled:opacity-50"
                   >
-                    Connect wallet to register products
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Update */}
-            {activeTab === "update" && (
-              <div className="space-y-5">
-                <MethodSignature name="update_status" params="(product_id: String, new_status: String)" color="#fbbf24" />
-                <Input label="Product ID" value={updateId} onChange={(e) => setUpdateId(e.target.value)} placeholder="e.g. PROD-001" />
-
-                <div className="space-y-2">
-                  <label className="block text-[11px] font-medium uppercase tracking-wider text-white/30">New Status</label>
-                  <div className="flex gap-2">
-                    {(["Shipped", "Delivered"] as const).map((s) => {
-                      const cfg = STATUS_CONFIG[s];
-                      const active = updateStatusVal === s;
-                      return (
-                        <button
-                          key={s}
-                          onClick={() => setUpdateStatusVal(s)}
-                          className={cn(
-                            "flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all active:scale-95",
-                            active
-                              ? `${cfg.border} ${cfg.bg} ${cfg.color}`
-                              : "border-white/[0.06] bg-white/[0.02] text-white/35 hover:text-white/55 hover:border-white/[0.1]"
-                          )}
-                        >
-                          <span className={cn("h-1.5 w-1.5 rounded-full transition-colors", active ? cfg.dot : "bg-white/20")} />
-                          {s}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="group rounded-xl border border-white/[0.06] bg-white/[0.02] p-px transition-all focus-within:border-[#fbbf24]/30 focus-within:shadow-[0_0_20px_rgba(251,191,36,0.08)]">
-                    <input
-                      value={updateStatusVal}
-                      onChange={(e) => setUpdateStatusVal(e.target.value)}
-                      placeholder="Or type a custom status..."
-                      className="w-full rounded-[11px] bg-transparent px-4 py-3 font-mono text-sm text-white/90 placeholder:text-white/15 outline-none"
-                    />
-                  </div>
-                </div>
-
-                {walletAddress ? (
-                  <ShimmerButton onClick={handleUpdateStatus} disabled={isUpdating} shimmerColor="#fbbf24" className="w-full">
-                    {isUpdating ? <><SpinnerIcon /> Updating...</> : <><RefreshIcon /> Update Status</>}
-                  </ShimmerButton>
-                ) : (
-                  <button
-                    onClick={onConnect}
-                    disabled={isConnecting}
-                    className="w-full rounded-xl border border-dashed border-[#fbbf24]/20 bg-[#fbbf24]/[0.03] py-4 text-sm text-[#fbbf24]/60 hover:border-[#fbbf24]/30 hover:text-[#fbbf24]/80 active:scale-[0.99] transition-all disabled:opacity-50"
-                  >
-                    Connect wallet to update status
+                    Connect wallet to upload music
                   </button>
                 )}
               </div>
@@ -418,16 +405,7 @@ export default function ContractUI({ walletAddress, onConnect, isConnecting }: C
 
           {/* Footer */}
           <div className="border-t border-white/[0.04] px-6 py-3 flex items-center justify-between">
-            <p className="text-[10px] text-white/15">Supply Chain Tracker &middot; Soroban</p>
-            <div className="flex items-center gap-2">
-              {["Created", "Shipped", "Delivered"].map((s, i) => (
-                <span key={s} className="flex items-center gap-1.5">
-                  <span className={cn("h-1 w-1 rounded-full", STATUS_CONFIG[s]?.dot ?? "bg-white/20")} />
-                  <span className="font-mono text-[9px] text-white/15">{s}</span>
-                  {i < 2 && <span className="text-white/10 text-[8px]">&rarr;</span>}
-                </span>
-              ))}
-            </div>
+            <p className="text-[10px] text-white/15">Decentralized Music Ecosystem &middot; Stellar &amp; Soroban</p>
           </div>
         </AnimatedCard>
       </Spotlight>
