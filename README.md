@@ -34,4 +34,8 @@ The vision of this project is to create a decentralized and transparent music ec
 - Artist verification and reputation system
 - Community voting and music discovery features
 
+## contract deployment details:
+contract deployment id:CDUMEZTCCYW53FLETBQMALSAIB4VJ6FYZLWPOVJVU3I3TPEYNND66JDY
+<img width="2560" height="1600" alt="image" src="https://github.com/user-attachments/assets/11e67b84-7358-4ab2-b701-60e4544744b1" />
+
 ---
