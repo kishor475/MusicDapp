@@ -48,6 +48,7 @@ To start the development server, navigate into the `client` directory and follow
    nvm install 22
    nvm use 22
 # UI 
-<img width="2560" height="1600" alt="image" src="https://github.com/user-attachments/assets/3dd3169a-09e9-4254-bab6-9f6c7c7096fa" />
+<img width="2398" height="1378" alt="image" src="https://github.com/user-attachments/assets/1c7632f2-42de-4ecf-8e12-f87682b0147d" />
+
 
 ---
